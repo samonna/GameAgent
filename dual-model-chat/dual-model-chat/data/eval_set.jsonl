@@ -1,0 +1,8 @@
+{"question": "Is 1 a prime number?", "answer": "No. By definition a prime has exactly two distinct positive divisors; 1 has only one."}
+{"question": "What is the derivative of x^x with respect to x?", "answer": "x^x (ln x + 1)"}
+{"question": "How many edges does a cube have?", "answer": "12"}
+{"question": "In a confusion matrix, what is recall?", "answer": "TP / (TP + FN): the fraction of actual positives that are correctly identified."}
+{"question": "What is the time complexity of binary search on a sorted array of n elements?", "answer": "O(log n)"}
+{"question": "Which planet has the most moons as of 2024?", "answer": "Saturn"}
+{"question": "What does the 'C' in CNN stand for in deep learning?", "answer": "Convolutional"}
+{"question": "Is the empty set a subset of every set?", "answer": "Yes"}
