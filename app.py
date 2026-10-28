@@ -321,7 +321,7 @@ CFG: dict[str, dict] = {
     "A": {
         "base_url": os.getenv("MODEL_A_BASE_URL", NIM_BASE),
         "api_key": os.getenv("MODEL_A_API_KEY") or os.getenv("NVIDIA_API_KEY", ""),
-        "model": os.getenv("MODEL_A_NAME", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+        "model": os.getenv("MODEL_A_NAME", "nvidia/nemotron-3-super-120b-a12b"),
         "label": os.getenv("MODEL_A_LABEL", "Nemotron"),
     },
     "B": {
@@ -803,16 +803,47 @@ def render(g, show_log: bool) -> str:
     return "\n".join(out)
 
 
-def respond(message, history, mode, show_log, temperature):
+def respond(message, history, mode, show_log, temperature, model_a, model_b):
     if not message or not message.strip():
         return ""
+    if model_a:
+        CFG["A"]["model"] = model_a.strip()
+    if model_b:
+        CFG["B"]["model"] = model_b.strip()
     g = play(message, history, mode=mode, temperature=temperature)
     return render(g, show_log)
 
 
+# --- model discovery: NIM retires model IDs (HTTP 410), so list what exists --
+def list_models(key: str) -> list[str]:
+    try:
+        return sorted(m.id for m in _client(key).models.list().data)
+    except Exception:  # noqa: BLE001 - no key / endpoint without /models
+        return []
+
+
+def _pick(available: list[str], preferred: str, *fallback_substrings: str, avoid: str = "") -> str:
+    if not available or preferred in available:
+        return preferred
+    for sub in fallback_substrings:
+        for m in available:
+            if sub in m and m != avoid:
+                return m
+    return next((m for m in available if m != avoid), preferred)
+
+
+MODELS_A = list_models("A")
+MODELS_B = list_models("B") if CFG["B"]["base_url"] != CFG["A"]["base_url"] else MODELS_A
+DEFAULT_A = _pick(MODELS_A, CFG["A"]["model"], "nemotron-3-super", "nemotron")
+DEFAULT_B = _pick(MODELS_B, CFG["B"]["model"], "gpt-oss-120b", "gpt-oss", "deepseek", "llama-3.3", avoid=DEFAULT_A)
+CFG["A"]["model"], CFG["B"]["model"] = DEFAULT_A, DEFAULT_B
+if CFG["J"]["base_url"] == CFG["A"]["base_url"] and CFG["J"]["model"] not in (MODELS_A or [CFG["J"]["model"]]):
+    CFG["J"]["model"] = DEFAULT_A
+
+
 DESCRIPTION = f"""
-Each prompt is answered by **{CFG['A']['label']}** (`{CFG['A']['model']}`) and
-**{CFG['B']['label']}** (`{CFG['B']['model']}`). The answers are formalised in
+Each prompt is answered by two models (defaults: `{DEFAULT_A}` and `{DEFAULT_B}`;
+change them under *Additional inputs* - the lists are fetched live from the provider). The answers are formalised in
 propositional logic and checked exactly (self-consistency, compatibility,
 entailment, equivalence). Unless they are logically equivalent, the models
 critique each other, choose to DEFEND or REVISE, and a judge scores both
@@ -829,6 +860,10 @@ demo = gr.ChatInterface(
         gr.Radio(["full", "quick"], value="full", label="Mode (full = critique + revision rounds)"),
         gr.Checkbox(value=True, label="Show game log"),
         gr.Slider(0.0, 1.0, value=0.2, step=0.1, label="Temperature"),
+        gr.Dropdown(choices=MODELS_A or [DEFAULT_A], value=DEFAULT_A, allow_custom_value=True,
+                    label=f"Model A ({CFG['A']['label']}) - pick any ID the provider lists"),
+        gr.Dropdown(choices=MODELS_B or [DEFAULT_B], value=DEFAULT_B, allow_custom_value=True,
+                    label=f"Model B ({CFG['B']['label']}) - pick any ID the provider lists"),
     ],
     examples=[
         ["What is the derivative of x^x?"],
